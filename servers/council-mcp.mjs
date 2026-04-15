@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 const SERVER_NAME = "council-orchestrator";
-const SERVER_VERSION = "0.1.0";
+const SERVER_VERSION = "0.1.1";
 const DEFAULT_PROTOCOL_VERSION = "2025-03-26";
 
 const DEFAULT_PERSONA_COUNT = 5;
@@ -16,6 +16,12 @@ const MAX_PERSONA_COUNT = 8;
 const DEFAULT_MAX_FILE_CHARS = 16000;
 const DEFAULT_MAX_TOTAL_CHARS = 64000;
 const COPILOT_PHASE_TIMEOUT_MS = 5 * 60 * 1000;
+const DEBUG_LOG_PATH = process.env.COUNCIL_MCP_DEBUG
+  ? path.join(
+      process.env.COPILOT_HOME || path.join(os.homedir(), ".copilot"),
+      "council-mcp-debug.log"
+    )
+  : "";
 
 const COUNCIL_TOOL = {
   name: "council_run",
@@ -76,58 +82,92 @@ const COUNCIL_TOOL = {
 
 let inputBuffer = Buffer.alloc(0);
 let negotiatedProtocolVersion = DEFAULT_PROTOCOL_VERSION;
+let transportMode = "content-length";
 
 process.on("unhandledRejection", (error) => {
   log(`Unhandled rejection: ${toErrorMessage(error)}`);
 });
 
 process.stdin.on("data", (chunk) => {
+  debugLog(`stdin chunk ${chunk.length} bytes`);
+  debugLog(`stdin raw ${JSON.stringify(chunk.toString("utf8"))}`);
   inputBuffer = Buffer.concat([inputBuffer, chunk]);
   void drainBuffer();
 });
 process.stdin.on("end", () => {
+  debugLog("stdin ended");
   process.exit(0);
 });
 process.stdin.resume();
+debugLog("server booted");
 
 async function drainBuffer() {
   while (true) {
-    const headerEnd = inputBuffer.indexOf("\r\n\r\n");
-    if (headerEnd === -1) {
-      return;
-    }
+    const frame = findHeaderFrame(inputBuffer);
+    if (frame) {
+      const headerText = inputBuffer.slice(0, frame.headerEnd).toString("utf8");
+      const headers = parseHeaders(headerText);
+      const contentLength = Number.parseInt(headers["content-length"] || "", 10);
+      if (!Number.isFinite(contentLength) || contentLength < 0) {
+        inputBuffer = Buffer.alloc(0);
+        throw new Error("Invalid Content-Length header.");
+      }
 
-    const headerText = inputBuffer.slice(0, headerEnd).toString("utf8");
-    const headers = parseHeaders(headerText);
-    const contentLength = Number.parseInt(headers["content-length"] || "", 10);
-    if (!Number.isFinite(contentLength) || contentLength < 0) {
-      inputBuffer = Buffer.alloc(0);
-      throw new Error("Invalid Content-Length header.");
-    }
+      const messageEnd = frame.headerEnd + frame.separatorLength + contentLength;
+      if (inputBuffer.length < messageEnd) {
+        return;
+      }
 
-    const messageEnd = headerEnd + 4 + contentLength;
-    if (inputBuffer.length < messageEnd) {
-      return;
-    }
-
-    const body = inputBuffer.slice(headerEnd + 4, messageEnd).toString("utf8");
-    inputBuffer = inputBuffer.slice(messageEnd);
-
-    let message;
-    try {
-      message = JSON.parse(body);
-    } catch (error) {
-      log(`Failed to parse JSON-RPC payload: ${toErrorMessage(error)}`);
+      const body = inputBuffer
+        .slice(frame.headerEnd + frame.separatorLength, messageEnd)
+        .toString("utf8");
+      inputBuffer = inputBuffer.slice(messageEnd);
+      transportMode = "content-length";
+      await handleRawMessage(body);
       continue;
     }
 
-    void handleMessage(message);
+    const newlineIndex = inputBuffer.indexOf("\n");
+    if (newlineIndex === -1) {
+      return;
+    }
+
+    const rawLine = inputBuffer.slice(0, newlineIndex).toString("utf8");
+    inputBuffer = inputBuffer.slice(newlineIndex + 1);
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+
+    transportMode = "line";
+    await handleRawMessage(line);
   }
+}
+
+function findHeaderFrame(buffer) {
+  const crlfIndex = buffer.indexOf("\r\n\r\n");
+  const lfIndex = buffer.indexOf("\n\n");
+
+  if (crlfIndex === -1 && lfIndex === -1) {
+    return null;
+  }
+
+  if (crlfIndex !== -1 && (lfIndex === -1 || crlfIndex <= lfIndex)) {
+    return {
+      headerEnd: crlfIndex,
+      separatorLength: 4
+    };
+  }
+
+  return {
+    headerEnd: lfIndex,
+    separatorLength: 2
+  };
 }
 
 function parseHeaders(text) {
   const headers = {};
-  for (const line of text.split("\r\n")) {
+  for (const line of text.split(/\r?\n/)) {
     const separator = line.indexOf(":");
     if (separator === -1) {
       continue;
@@ -137,6 +177,20 @@ function parseHeaders(text) {
     headers[name] = value;
   }
   return headers;
+}
+
+async function handleRawMessage(rawText) {
+  let message;
+  try {
+    message = JSON.parse(rawText);
+  } catch (error) {
+    debugLog(`json parse failure: ${toErrorMessage(error)}`);
+    log(`Failed to parse JSON-RPC payload: ${toErrorMessage(error)}`);
+    return;
+  }
+
+  debugLog(`received method=${message.method || "<none>"} id=${message.id ?? "<none>"}`);
+  await handleMessage(message);
 }
 
 async function handleMessage(message) {
@@ -217,6 +271,7 @@ function sendResult(id, result) {
   if (id === undefined || id === null) {
     return;
   }
+  debugLog(`send result id=${id}`);
   sendMessage({
     jsonrpc: "2.0",
     id,
@@ -228,6 +283,7 @@ function sendError(id, code, message) {
   if (id === undefined || id === null) {
     return;
   }
+  debugLog(`send error id=${id} code=${code} message=${message}`);
   sendMessage({
     jsonrpc: "2.0",
     id,
@@ -240,12 +296,28 @@ function sendError(id, code, message) {
 
 function sendMessage(payload) {
   const body = JSON.stringify(payload);
+  debugLog(`send message bytes=${Buffer.byteLength(body, "utf8")}`);
+  if (transportMode === "line") {
+    process.stdout.write(`${body}\n`);
+    return;
+  }
   const header = `Content-Length: ${Buffer.byteLength(body, "utf8")}\r\n\r\n`;
   process.stdout.write(header + body);
 }
 
 function log(message) {
   process.stderr.write(`[${SERVER_NAME}] ${message}\n`);
+}
+
+function debugLog(message) {
+  if (!DEBUG_LOG_PATH) {
+    return;
+  }
+  void fs.appendFile(
+    DEBUG_LOG_PATH,
+    `${new Date().toISOString()} ${message}\n`,
+    "utf8"
+  );
 }
 
 async function runCouncil(rawArgs, { source }) {

@@ -38,6 +38,16 @@ Then install from that marketplace:
 copilot plugin install copilot-council-review@copilot-council-review
 ```
 
+## Reinstall after older versions
+
+If you installed an earlier plugin build that timed out while loading `council-orchestrator`, reinstall it to get the framing/loader fix in `v0.1.2`:
+
+```bash
+copilot plugin uninstall copilot-council-review
+copilot plugin marketplace add ncksol/copilot-council-review
+copilot plugin install copilot-council-review@copilot-council-review
+```
+
 ## Install from a local checkout
 
 ### macOS / Linux
@@ -52,7 +62,7 @@ copilot plugin install copilot-council-review@copilot-council-review
 ./scripts/install-user.ps1
 ```
 
-Both scripts run `copilot plugin install` against the local repository checkout so you can iterate locally and reinstall after edits. This direct-install path is best treated as a development workflow.
+Both scripts install from the published GitHub marketplace entry so the MCP server lands in a stable path that the bootstrap loader can resolve reliably.
 
 ## Using the plugin
 

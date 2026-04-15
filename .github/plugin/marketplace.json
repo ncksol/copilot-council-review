@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Marketplace manifest for the copilot-council-review plugin",
-    "version": "0.1.0"
+    "version": "0.1.2"
   },
   "plugins": [
     {
       "name": "copilot-council-review",
       "description": "True multi-session council review plugin for GitHub Copilot CLI",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "source": "."
     }
   ]

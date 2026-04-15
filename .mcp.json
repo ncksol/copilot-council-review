@@ -3,7 +3,8 @@
     "council-orchestrator": {
       "command": "node",
       "args": [
-        "./servers/council-mcp.mjs"
+        "-e",
+        "const path = require('node:path'); const os = require('node:os'); const { pathToFileURL } = require('node:url'); const home = process.env.COPILOT_HOME || path.join(os.homedir(), '.copilot'); const entry = path.join(home, 'installed-plugins', 'copilot-council-review', 'copilot-council-review', 'servers', 'council-mcp.mjs'); import(pathToFileURL(entry).href).catch((error) => { console.error(error); process.exit(1); });"
       ],
       "tools": [
         "*"
