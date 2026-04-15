@@ -9,7 +9,7 @@ You are running a multi-persona review council. The user will provide a subject 
 
 ## Preferred execution path
 
-If the `council_run` tool is available, use it. That is the preferred path because it runs genuinely separate council phases instead of simulating them in one response.
+If the `council_run` tool is available, use it. That is the preferred path because it runs genuinely separate council phases instead of simulating them in one response. In the packaged plugin, `council_run` is provided by the bundled MCP server.
 
 Before calling `council_run`:
 

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "council-orchestrator": {
+      "command": "node",
+      "args": [
+        "./servers/council-mcp.mjs"
+      ],
+      "tools": [
+        "*"
+      ]
+    }
+  }
+}

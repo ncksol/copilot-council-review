@@ -1,39 +1,44 @@
 # copilot-council-review
 
-`copilot-council-review` packages a GitHub Copilot CLI review workflow as two pieces:
+`copilot-council-review` is a **GitHub Copilot CLI plugin** that packages:
 
-1. A `council-review` skill that knows how to run a structured multi-perspective review.
-2. A `council-orchestrator` extension that performs true multi-session orchestration for persona generation, parallel reviewers, judge synthesis, and recommendation audit.
+1. A `council-review` skill for structured multi-perspective review.
+2. A `council_run` MCP tool that performs true multi-session orchestration for persona generation, parallel reviewers, judge synthesis, and recommendation audit.
+
+The plugin replaces the earlier extension-based packaging with a marketplace/installable plugin layout.
 
 ## Contents
 
 | Path | Purpose |
 | --- | --- |
-| `.github/extensions/council-orchestrator/extension.mjs` | Project-local Copilot CLI extension. |
-| `skills/council-review/SKILL.md` | Copilot skill that prefers the `council_run` tool and falls back to prompt-only review when needed. |
-| `scripts/install-user.sh` | Installs the extension and skill into `~/.copilot` for machine-wide interactive use on macOS/Linux. |
-| `scripts/install-user.ps1` | Installs the extension and skill into `~/.copilot` for machine-wide interactive use on Windows PowerShell. |
+| `plugin.json` | Copilot CLI plugin manifest. |
+| `.mcp.json` | MCP server configuration for the council orchestrator tool. |
+| `servers/council-mcp.mjs` | Standalone MCP server that runs the orchestration. |
+| `skills/council-review/SKILL.md` | Skill that prefers `council_run` and falls back to prompt-only review when needed. |
+| `.github/plugin/marketplace.json` | Marketplace manifest for plugin discovery and installation. |
+| `scripts/install-user.sh` | Installs the plugin from a local checkout on macOS/Linux. |
+| `scripts/install-user.ps1` | Installs the plugin from a local checkout on Windows PowerShell. |
 
 ## Requirements
 
-- GitHub Copilot CLI with extension support.
-- Interactive Copilot CLI sessions for the full orchestrated flow.
+- GitHub Copilot CLI with plugin support.
+- Node.js 18+ available as `node`.
 
-## Use it in this repo
+## Preferred install path
 
-Clone the repo, start `copilot` from the repo root, then run either of these:
+Register the repository as a marketplace:
 
-```text
-/council Review this architecture decision and prioritise the risks.
+```bash
+copilot plugin marketplace add ncksol/copilot-council-review
 ```
 
-or ask Copilot to use the skill:
+Then install from that marketplace:
 
-```text
-Use the council-review skill to review src/server.ts and docs/auth.md
+```bash
+copilot plugin install copilot-council-review@copilot-council-review
 ```
 
-## Install for use anywhere
+## Install from a local checkout
 
 ### macOS / Linux
 
@@ -47,12 +52,20 @@ Use the council-review skill to review src/server.ts and docs/auth.md
 ./scripts/install-user.ps1
 ```
 
-The scripts copy the extension into `~/.copilot/extensions/council-orchestrator/` and the skill into `~/.copilot/skills/council-review/`.
+Both scripts run `copilot plugin install` against the local repository checkout so you can iterate locally and reinstall after edits. This direct-install path is best treated as a development workflow.
 
-After installing, restart Copilot CLI or run `/clear` in an existing interactive session.
+## Using the plugin
+
+After installation, restart Copilot CLI or run `/clear`, then ask Copilot to use the skill:
+
+```text
+Use the council-review skill to review src/server.ts and docs/auth.md
+```
+
+Or ask for a council review directly and let Copilot invoke `council_run`.
 
 ## Notes
 
-- The skill prefers the `council_run` extension tool when it is available.
-- The extension is intended for interactive Copilot CLI use. Non-interactive `copilot -p` flows are not the primary target.
-- Council artifacts are written into the Copilot session workspace, not into this repository.
+- This plugin does **not** provide the old `/council` extension slash command.
+- The orchestrator uses isolated `copilot -p` runs under the hood so each phase is genuinely separate.
+- Artifacts are written to `~/.copilot/files/council-runs/` by default, or to `artifactPath` when you provide one.
